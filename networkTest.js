@@ -19,7 +19,7 @@ var term = class
 
 }
 
-//test
+
 //文字列bufをテキスト出力(path)
 // var write = function(path, buf){
 // 	fs.appendFileSync(path, buf, function (err) {

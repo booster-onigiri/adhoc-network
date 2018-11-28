@@ -5,7 +5,7 @@ var noble = require('./noble');
 var data = Buffer("");
 
 var util = require('util');
-
+var test;
 
 
 var term = class

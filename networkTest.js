@@ -1,10 +1,14 @@
-var bleno = require('bleno');
+var write = require('./write');
+var send = require('./send');
+var bleno = require("bleno");
+var noble = require('./noble');
 var data = Buffer("");
-var fs = require('fs');
+
 var util = require('util');
 
 
-class term
+
+var term = class
 {
 	constructor(uuid){
 		this.uuid = uuid;
@@ -13,45 +17,21 @@ class term
 		this.idDB = [];
 	}
 
-	set id(id){
-		this.id = id;
-	}
-	set uuDB(uuDB){
-		this.uuDB = uuDB;
-	}
-	set idDB(idDB){
-		this.idDB = idDB;
-	}
-	get uuid(){
-		return this.uuid;
-	}
-	get id(){
-		return this.id;
-	}
-	get uuDB(){
-		return this.uuDB;
-	}
-	get idDB(){
-		return this.idDB;
-	}
 }
 
-//文字列bufをAdvertising
-var send = function(buf){
-	bleno.startAdvertisingWithEIRData(buf, function (err) { });
-};
+
 //文字列bufをテキスト出力(path)
-var write = function(path, buf){
-	fs.appendFileSync(path, buf, function (err) {
-		console.log(err);
-	 });
-};
+// var write = function(path, buf){
+// 	fs.appendFileSync(path, buf, function (err) {
+// 		console.log(err);
+// 	 });
+// };
 
 var join = function(uuid){
 	//uuidの送信
 	send(uuid);
 	//リクエスト受信    -> IDDBを受け取る
-	
+	[]
 	//serverになる
 };
 
@@ -68,13 +48,15 @@ var server = function(){
 
 };
 
+
+
 bleno.on('stateChange', function (state) {
     console.log('bleno.on -> stateChange: ' + state);
     if (state === 'poweredOn') {
 
 	/*~~~~~ ここから処理開始 ~~~~~*/
 	//初期化
-	var myterm = term("myUUID");
+	var myterm = new term("myUUID");
 	myterm.idDB.push(this.id);
 	myterm.uuDB.push(this.uuid);
 
@@ -85,14 +67,7 @@ bleno.on('stateChange', function (state) {
 	send(buf);
 	write('Output.txt', "abcde"+"\n");
 	
-
-
-	process.exit();
-    } else {
-        bleno.stopAdvertising();
-    }
-
 	//処理終了
-
+	}
 });
 

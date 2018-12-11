@@ -5,4 +5,8 @@ function write(path, buf){
 	fs.appendFileSync(path, buf, function (err) {
 		console.log(err);
 	 });
+}function write(path, buf){
+	fs.appendFileSync(path, buf, function (err) {
+		console.log(err);
+	 });
 }

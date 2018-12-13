@@ -17,3 +17,4 @@ noble.on('discover', function (peripheral) {
     data = peripheral.advertisement.eir;
     data.toString('ascii', 0, 3)
 });
+

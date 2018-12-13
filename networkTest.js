@@ -7,10 +7,25 @@ var util = require('util');
 var macAddr = require('node-getmac');
 
 var myMAC = macAddr.replace(/:/g,'');
-
+var myid = 1;
 //ID管理用データベース
 //連想配列により実装
-var id_DataBase = {mac:myMAC, id:1};
+var id_DataBase = [];
+
+//ID管理用データベースへの挿入＋ソート
+var idPush = function(macAdress, ID){
+	id_DataBase.push({MAC:macAdress, ID:ID});
+	id_DataBase.sort(function(a,b){
+		if(a.ID<b.ID) return -1;
+		if(a.ID>b.ID) return 1;
+		return 0;
+	});
+};
+
+idPush(myMAC,myid);
+idPush("1234",3);
+idPush("3456",2);
+
 console.log(id_DataBase);
 
 var makePaket = function(MAC, PaketType, DestID, PaketNum, DeleteReq, HopRemain){
@@ -57,25 +72,32 @@ var join = function(uuid){
 
 var server = function(){
 	//受け取ったと仮定
+	var newID = 1;
 	var data = Buffer("00000" + myMAC + "000000" + "1" + "00" + "1" + "000" + "0");
 	//MACアドレスを受け取る
 	var mac = data.toString('ascii', 5, 17);
 	var PaketType = data.toString('ascii', 23, 24);
 	var SuggestID = data.toString('ascii', 24, 26);
 	var PaketNum = data.toString('ascii', 26, 27);
-	console.log("mac is:" + mac);
-	console.log("PaketType is:" + PaketType);
-	console.log("SuggestID is:" + SuggestID);
-	console.log("PaketNum is:" + PaketNum);
+
+	receive_MAC = "hoge";
 
 	//同じmacが既に存在するかチェック
+	if(id_DataBase[receive_MAC] == null) {	/*true:未登録MACアドレス*/
 
-	//利用可能idをチェック
+		//使われていないハッシュIDの検索
+		id_DataBase.forEach(function(a){
+			if(a.ID == newID) newID++;
+		});
+		console.log("newID is:"+newID);
+		idPush(receive_MAC,newID);
+		console.log(id_DataBase);
+	}
 
 	//そのidを受信機に送信
-
+	
 	//参入者をメンバーに通知
 
 };
 
-//server();
+server();

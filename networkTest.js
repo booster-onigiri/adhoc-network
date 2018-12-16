@@ -1,13 +1,82 @@
-var write = require('./write');
-var send = require('./bleno');
-var noble = require('./noble');
-var adress = require('node-getmac');
-var data = Buffer("");
-var util = require('util');
+//モジュールの読み込み
+var noble = require('noble');
+var bleno = require('bleno');
+var fs = require('fs');
 var macAddr = require('node-getmac');
 
+
+
+//自分のMACアドレスとID
 var myMAC = macAddr.replace(/:/g,'');
 var myid = 1;
+
+
+
+
+
+
+/////////////		bleno 定義部分			//////////////
+
+bleno.on('stateChange', function (state) {
+    console.log('bleno.on -> stateChange: ' + state);
+    if (state === 'poweredOn') {
+	
+	/*~~~~~ ここから処理開始 ~~~~~*/
+	//初期化
+
+	
+	//処理終了
+	}
+});
+
+/////////////////////////////////////////////////////////
+
+
+
+
+
+
+/////////////		noble 定義部分			//////////////
+
+noble.on('stateChange', function (state) {
+    console.log('noble.on -> stateChange: ' + state);
+    if (state === 'poweredOn') {
+        noble.startScanning([], true);
+    } else {
+        noble.stopScanning();
+    }
+});
+
+noble.on('discover', function (peripheral) {
+	var data;
+	data = peripheral.advertisement.eir;
+    data.toString('ascii', 0, 3)
+});
+
+/////////////////////////////////////////////////////////
+
+
+
+
+
+
+/***********		便利な関数定義部分		***********/
+
+//パケット送信用関数
+function send(buf){
+	bleno.startAdvertisingWithEIRData(buf, function (err) { });
+}
+//ファイル書き込み
+function write(path, buf){
+	fs.appendFileSync(path, buf, function (err) {
+		console.log(err);
+	 });
+}
+
+/******************************************************/
+
+
+
 //ID管理用データベース
 //連想配列により実装
 var id_DataBase = [];
@@ -71,21 +140,42 @@ var join = function(uuid){
 
 
 var server = function(){
-	//受け取ったと仮定
-	var newID = 1;
+	/* 処理準備 */
+	var newID;
+	
+	//仮定：リクエストを受ける
+	//MAC:"testMAC"
+	receive_MAC = "testMAC";
 	var data = Buffer("00000" + myMAC + "000000" + "1" + "00" + "1" + "000" + "0");
-	//MACアドレスを受け取る
+	
+	
+	
+	
+	//パケットを分解
 	var mac = data.toString('ascii', 5, 17);
 	var PaketType = data.toString('ascii', 23, 24);
 	var SuggestID = data.toString('ascii', 24, 26);
 	var PaketNum = data.toString('ascii', 26, 27);
 
-	receive_MAC = "hoge";
+	
+
+	
 
 	//同じmacが既に存在するかチェック
-	if(id_DataBase[receive_MAC] == null) {	/*true:未登録MACアドレス*/
+	id_DataBase.forEach(function(a){
+		if(a.MAC == receive_MAC) {
+			newID = a.ID;
+			console.log("Existing ID is:" + newID);
+		}
+	});
 
-		//使われていないハッシュIDの検索
+	//同じMACが存在しないときは、使えるIDを返す
+	if(newID == null){
+		/* newIDをカウント変数として使う */
+		newID = 1;
+
+
+		/* 使われていないハッシュIDの検索 */
 		id_DataBase.forEach(function(a){
 			if(a.ID == newID) newID++;
 		});
@@ -94,8 +184,9 @@ var server = function(){
 		console.log(id_DataBase);
 	}
 
+
 	//そのidを受信機に送信
-	
+	send(makePaket(myMAC, 2, newID,1,"000", "0"));
 	//参入者をメンバーに通知
 
 };

@@ -13,11 +13,11 @@ var myid = 1;
 
 
 
-
+var initialProcess = () => {
 
 /////////////		bleno 定義部分			//////////////
 
-bleno.on('stateChange', function (state) {
+bleno.on('stateChange',  (state) => {
     console.log('bleno.on -> stateChange: ' + state);
     if (state === 'poweredOn') {
 	
@@ -38,7 +38,7 @@ bleno.on('stateChange', function (state) {
 
 /////////////		noble 定義部分			//////////////
 
-noble.on('stateChange', function (state) {
+noble.on('stateChange',  (state) => {
     console.log('noble.on -> stateChange: ' + state);
     if (state === 'poweredOn') {
         noble.startScanning([], true);
@@ -47,7 +47,7 @@ noble.on('stateChange', function (state) {
     }
 });
 
-noble.on('discover', function (peripheral) {
+noble.on('discover',  (peripheral) => {
 	var data;
 	data = peripheral.advertisement.eir;
     data.toString('ascii', 0, 3)
@@ -55,7 +55,7 @@ noble.on('discover', function (peripheral) {
 
 /////////////////////////////////////////////////////////
 
-
+}
 
 
 
@@ -64,11 +64,11 @@ noble.on('discover', function (peripheral) {
 
 //パケット送信用関数
 function send(buf){
-	bleno.startAdvertisingWithEIRData(buf, function (err) { });
+	bleno.startAdvertisingWithEIRData(buf,  (err) => { });
 }
 //ファイル書き込み
 function write(path, buf){
-	fs.appendFileSync(path, buf, function (err) {
+	fs.appendFileSync(path, buf,  (err) => {
 		console.log(err);
 	 });
 }
@@ -77,14 +77,16 @@ function write(path, buf){
 
 
 
+var mainProcess = () => {
+
 //ID管理用データベース
 //連想配列により実装
 var id_DataBase = [];
 
 //ID管理用データベースへの挿入＋ソート
-var idPush = function(macAdress, ID){
+var idPush = (macAdress, ID) => {
 	id_DataBase.push({MAC:macAdress, ID:ID});
-	id_DataBase.sort(function(a,b){
+	id_DataBase.sort((a,b) => {
 		if(a.ID<b.ID) return -1;
 		if(a.ID>b.ID) return 1;
 		return 0;
@@ -97,7 +99,7 @@ idPush("3456",2);
 
 console.log(id_DataBase);
 
-var makePaket = function(MAC, PaketType, DestID, PaketNum, DeleteReq, HopRemain){
+var makePaket = (MAC, PaketType, DestID, PaketNum, DeleteReq, HopRemain) => {
 	buf = Buffer("00000" + MAC + "000000" + PaketType + DestID + PaketNum + DeleteReq + HopRemain);
 	return buf;
 };
@@ -118,7 +120,7 @@ var makePaket = function(MAC, PaketType, DestID, PaketNum, DeleteReq, HopRemain)
 */
 
 
-var join = function(uuid){
+var join = (uuid) => {
 	var PaketType = 1;				//データの種類
 	var SuggestID;					//提案ハッシュID
 	var PaketNum = 1;				//データID（パケット数）
@@ -139,7 +141,7 @@ var join = function(uuid){
 
 
 
-var server = function(){
+var server = ()=>{
 	/* 処理準備 */
 	var newID;
 	
@@ -162,7 +164,7 @@ var server = function(){
 	
 
 	//同じmacが既に存在するかチェック
-	id_DataBase.forEach(function(a){
+	id_DataBase.forEach((a) => {
 		if(a.MAC == receive_MAC) {
 			newID = a.ID;
 			console.log("Existing ID is:" + newID);
@@ -176,7 +178,7 @@ var server = function(){
 
 
 		/* 使われていないハッシュIDの検索 */
-		id_DataBase.forEach(function(a){
+		id_DataBase.forEach((a) => {
 			if(a.ID == newID) newID++;
 		});
 		console.log("newID is:"+newID);
@@ -192,3 +194,28 @@ var server = function(){
 };
 
 server();
+
+}
+
+///////////////////////			実行部		///////////////////////////
+
+let promise = new Promise((resolve, reject) => { // 初期化処理
+	console.log('InitialProcess')
+	initialProcess();
+	resolve()
+  })
+promise.then(() => { 							// メイン処理
+	return new Promise((resolve, reject) => {
+	  setTimeout(() => {
+		console.log('MainProcess')
+		mainProcess();
+		resolve()
+	  }, 500)
+	})
+  }).catch(() => { // エラーハンドリング
+	console.error('Something wrong!')
+  })
+
+  /////////////////////////////////////////////////////////////////////
+
+  

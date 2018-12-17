@@ -8,58 +8,8 @@ var macAddr = require('node-getmac')
 
 //自分のMACアドレスとID
 var myMAC = macAddr.replace(/:/g,'')
-var myid = 1
-
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~初期化処理の定義~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
-
-var initialProcess = () => {
-
-/////////////		bleno 定義部分			//////////////
-
-bleno.on('stateChange',  (state) => {
-    console.log('bleno.on -> stateChange: ' + state)
-    if (state === 'poweredOn') {
-	
-	/*~~~~~ ここから処理開始 ~~~~~*/
-	//初期化
-
-	
-	//処理終了
-	}
-});
-
-/////////////////////////////////////////////////////////
-
-
-
-
-
-
-/////////////		noble 定義部分			//////////////
-
-noble.on('stateChange',  (state) => {
-    console.log('noble.on -> stateChange: ' + state)
-    if (state === 'poweredOn') {
-        noble.startScanning([], true)
-    } else {
-        noble.stopScanning()
-    }
-});
-
-noble.on('discover',  (peripheral) => {
-	var data
-	data = peripheral.advertisement.eir
-    data.toString('ascii', 0, 3)
-});
-
-/////////////////////////////////////////////////////////
-
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~初期化処理の定義 おわり~~~~~~~~~~~~~~~~~~~~~~~~~~~//
-
-
+var myid;
+var anyHere = 0
 
 
 
@@ -77,6 +27,22 @@ function write(path, buf){
 	 })
 }
 
+function getMac(data){
+	return data.toString('ascii', 5, 17)
+}
+
+function getPacketType(data){
+	return data.toString('ascii', 23, 24)
+}
+
+function getID(data){
+	return data.toString('ascii', 24, 26)
+}
+
+function getPacketNum(data){
+	return data.toString('ascii', 26, 27)
+}
+
 /////////////////////////////////////////////////////////
 
 
@@ -84,8 +50,8 @@ function write(path, buf){
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~メイン処理の定義~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
-var mainProcess = () => {
 
+	
 //ID管理用データベース
 //連想配列により実装
 var id_DataBase = []
@@ -107,7 +73,7 @@ idPush("3456",2)
 console.log(id_DataBase)
 
 var makePaket = (MAC, PaketType, DestID, PaketNum, DeleteReq, HopRemain) => {
-	buf = Buffer("00000" + MAC + "000000" + PaketType + DestID + PaketNum + DeleteReq + HopRemain)
+	buf = Buffer("Adhc0" + MAC + "000000" + PaketType + DestID + PaketNum + DeleteReq + HopRemain)
 	return buf
 };
 //パケットの構成
@@ -137,37 +103,26 @@ var join = (uuid) => {
 
 	
 	/* MACアドレスの送信 */
-	SuggestID = "00"				//提案IDそもそもいる？
 	send(makePaket(myMAC, PaketType, SuggestID,PaketNum,DeleteReq, HopRemain))
 	
+
 	//リクエスト受信    -> IDDBを受け取る
-	
 
 	//serverになる
 };
 
 
 
-var server = ()=>{
+var server = (data) => {
 	/* 処理準備 */
 	var newID
 	
-	//仮定：リクエストを受ける
-	//MAC:"testMAC"
-	receive_MAC = "testMAC"
-	var data = Buffer("00000" + myMAC + "000000" + "1" + "00" + "1" + "000" + "0")
-	
-	
+	//receive_MAC = "testMAC"
+	//var data = Buffer("00000" + receive_MAC + "000000" + "1" + "00" + "1" + "000" + "0")
 	
 	
 	//パケットを分解
-	var mac = data.toString('ascii', 5, 17)
-	var PaketType = data.toString('ascii', 23, 24)
-	var SuggestID = data.toString('ascii', 24, 26)
-	var PaketNum = data.toString('ascii', 26, 27)
-
-	
-
+	var receive_MAC = getMac(data)
 	
 
 	//同じmacが既に存在するかチェック
@@ -175,6 +130,8 @@ var server = ()=>{
 		if(a.MAC == receive_MAC) {
 			newID = a.ID
 			console.log("Existing ID is:" + newID)
+			console.log(receive_MAC)
+
 		}
 	})
 
@@ -183,31 +140,114 @@ var server = ()=>{
 		/* newIDをカウント変数として使う */
 		newID = 1
 
-
 		/* 使われていないハッシュIDの検索 */
 		id_DataBase.forEach((a) => {
 			if(a.ID == newID) newID++
 		})
 		console.log("newID is:"+newID)
-		idPush(receive_MAC,newID)
 		console.log(id_DataBase)
 	}
 
-
 	//そのidを受信機に送信
 	send(makePaket(myMAC, 2, newID,1,"000", "0"))
-	//参入者をメンバーに通知
-
-};
-
-server();
 
 }
+
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~メイン処理の定義 おわり~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
 
 
+
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~初期化処理の定義~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+
+var initialProcess = () => {
+
+	/////////////		bleno 定義部分			//////////////
+	
+	bleno.on('stateChange',  (state) => {
+		console.log('bleno.on -> stateChange: ' + state)
+		if (state === 'poweredOn') {
+		
+		/*~~~~~ ここから処理開始 ~~~~~*/
+		//初期化
+	
+		
+		//処理終了
+		}
+	});
+	
+	/////////////////////////////////////////////////////////
+	
+	
+	
+	
+	
+	
+	/////////////		noble 定義部分			//////////////
+	
+	noble.on('stateChange',  (state) => {
+		console.log('noble.on -> stateChange: ' + state)
+		if (state === 'poweredOn') {
+			noble.startScanning([], true)
+		} else {
+			noble.stopScanning()
+		}
+	});
+	
+	noble.on('discover',  (peripheral) => {
+		var data
+		data = peripheral.advertisement.eir
+		if(data.toString('ascii', 0, 4)=='Adhc'){
+			console.log(data)
+			switch(getPacketType(data))
+			{
+			case '0':	//ID配布
+				break;
+					
+			case '1':	//新IDリクエスト
+				server(data)
+				break;
+					
+			case '2':	//新IDリクエストの返信
+				if(anyHere == 0){
+					anyHere = 1
+					myid = getID(data);
+					
+					//提案IDの受諾メッセージ
+					send(makePaket(getMac(data)), '3',myid,'1','000','0')
+				}
+				break;
+			
+			case '3':	//返信受諾
+				if(getMac(data)==myMAC){
+					idPush(receive_MAC,newID)
+					
+					/* 周囲に新規端末の通知 */
+
+				}
+				break
+
+			case '4':	//通常メッセージ
+				break
+			
+			case '5':	//ACKメッセージ
+				break
+
+			default:	//エラーハンドル
+				console.log('receivePacket Switch Error!!')
+				break
+			}
+
+		}
+	});
+	
+	/////////////////////////////////////////////////////////
+	
+	}
+	
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~初期化処理の定義 おわり~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
 
 
@@ -241,7 +281,7 @@ promise.then(() => { 							// メイン処理
 	return new Promise((resolve, reject) => {
 	  setTimeout(() => {
 		console.log('MainProcess')
-		mainProcess()
+		join()
 		resolve()
 	  }, 500)
 	})

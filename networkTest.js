@@ -8,18 +8,28 @@ var macAddr = require('node-getmac')
 
 //自分のMACアドレスとID
 var myMAC = macAddr.replace(/:/g,'')
-var myid;
-var anyHere = 0
+var myid = 1;
 
+
+//各フラグ
+var anyHere = 0
+var joinNow = true
 
 
 
 //////////////////////マクロ関数定義///////////////////////
 
-//パケット送信用関数
+//パケット送信関数
 function send(buf){
 	bleno.startAdvertisingWithEIRData(buf,  (err) => { })
 }
+
+//送信パケット作成関数
+var makePaket = (MAC, PaketType, DestID, PaketNum, DeleteReq, HopRemain) => {
+	buf = Buffer("Adhc"+"0" + MAC + "000000" + PaketType + DestID + PaketNum + DeleteReq + HopRemain)
+	return buf
+}
+
 //ファイル書き込み
 function write(path, buf){
 	fs.appendFileSync(path, buf,  (err) => {
@@ -70,12 +80,10 @@ idPush(myMAC,myid)
 idPush("1234",3)
 idPush("3456",2)
 
+console.log("データベースの初期化")
 console.log(id_DataBase)
 
-var makePaket = (MAC, PaketType, DestID, PaketNum, DeleteReq, HopRemain) => {
-	buf = Buffer("Adhc0" + MAC + "000000" + PaketType + DestID + PaketNum + DeleteReq + HopRemain)
-	return buf
-};
+
 //パケットの構成
 /*
 1~5			<0埋め>
@@ -93,9 +101,9 @@ var makePaket = (MAC, PaketType, DestID, PaketNum, DeleteReq, HopRemain) => {
 */
 
 
-var join = (uuid) => {
+var join = () => {
 	var PaketType = 1				//データの種類
-	var SuggestID					//提案ハッシュID
+	var SuggestID = 0				//提案ハッシュID
 	var PaketNum = 1				//データID（パケット数）
 	var DeleteReq = "000"			//データ消去要求
 	var HopRemain = "0"				//ホップ回数
@@ -103,8 +111,14 @@ var join = (uuid) => {
 
 	
 	/* MACアドレスの送信 */
+	console.log("自分の送信：" + makePaket(myMAC, PaketType, SuggestID,PaketNum,DeleteReq, HopRemain))
 	send(makePaket(myMAC, PaketType, SuggestID,PaketNum,DeleteReq, HopRemain))
 	
+	setTimeout(() => {
+		bleno.stopAdvertising()
+		joinNow = false
+		console.log("周囲にサーバーなし")
+	},10000)
 
 	//リクエスト受信    -> IDDBを受け取る
 
@@ -130,7 +144,6 @@ var server = (data) => {
 		if(a.MAC == receive_MAC) {
 			newID = a.ID
 			console.log("Existing ID is:" + newID)
-			console.log(receive_MAC)
 
 		}
 	})
@@ -145,10 +158,10 @@ var server = (data) => {
 			if(a.ID == newID) newID++
 		})
 		console.log("newID is:"+newID)
-		console.log(id_DataBase)
 	}
 
 	//そのidを受信機に送信
+	console.log("自分の送信：" + makePaket(myMAC, 2, newID,1,"000", "0"))
 	send(makePaket(myMAC, 2, newID,1,"000", "0"))
 
 }
@@ -199,15 +212,16 @@ var initialProcess = () => {
 	noble.on('discover',  (peripheral) => {
 		var data
 		data = peripheral.advertisement.eir
-		if(data.toString('ascii', 0, 4)=='Adhc'){
-			console.log(data)
+		if(data.toString('ascii', 0, 4)=='Adhc'){			
 			switch(getPacketType(data))
 			{
 			case '0':	//ID配布
 				break;
 					
 			case '1':	//新IDリクエスト
-				server(data)
+				if(joinNow)	return
+				else 		server(data)
+				
 				break;
 					
 			case '2':	//新IDリクエストの返信
@@ -216,17 +230,30 @@ var initialProcess = () => {
 					myid = getID(data);
 					
 					//提案IDの受諾メッセージ
-					send(makePaket(getMac(data)), '3',myid,'1','000','0')
+					console.log("自分の送信：" + makePaket(myMAC,3,myid,1,"000","0"))
+					send(makePaket(myMAC,3,myid,1,"000","0"))
 				}
 				break;
 			
 			case '3':	//返信受諾
-				if(getMac(data)==myMAC){
-					idPush(receive_MAC,newID)
-					
-					/* 周囲に新規端末の通知 */
-
+				var isExist = false;
+				id_DataBase.forEach((a) => {
+					if(a.MAC == getMac(data)) {
+						isExist = true
+					}
+				})
+				if(isExist == false) {
+					idPush(getMac(data),getID(data))
+					console.log("DATA BASE UPDATED!!")
+					console.log(id_DataBase)
 				}
+				
+				/* 新規端末へリスト送信 */
+
+					
+				/* 周囲に新規端末の通知 */
+
+				
 				break
 
 			case '4':	//通常メッセージ

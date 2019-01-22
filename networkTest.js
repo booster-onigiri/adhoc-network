@@ -186,14 +186,11 @@ idPush(myMAC,myid)
 //idPush("111111111111",3)
 //idPush("222222222222",2)
 
-console.log("データベースの初期化")
-console.log(id_ManagementDatabase)
 
 }
 
 var join = () => {
 	/* MACアドレスの送信 */
-	console.log("自分の送信：" + makeNetworkConstructionPacket(myMAC, 1, "00", 1, "00", "0", 0,"00"))
 	AdvertisingData(makeNetworkConstructionPacket(myMAC, 1, "00", 1, "00", "0", 0,"00"))
 	
 	/* 時間経過で既存ネットワークを発見できない→ネットワーク新規作成 */
@@ -238,7 +235,6 @@ var Type1Process = (data) => {
 		id_ManagementDatabase.forEach((a) => {
 			if(a.MAC == receive_mac) {
 				proposal_ID = a.ID
-				console.log("Existing ID is:" + proposal_ID)
 			}
 		})
 
@@ -249,11 +245,9 @@ var Type1Process = (data) => {
 			id_ManagementDatabase.forEach((a) => {
 				if(a.ID == proposal_ID) proposal_ID++
 			})
-			console.log("proposal_ID is:"+proposal_ID)
 		}
 
 		//そのidを受信機に送信
-		console.log("自分の送信：" + makeNetworkConstructionPacket(getAdMac(data), 2, proposal_ID,1, myid, "0", 0, "00"))
 		AdvertisingData(makeNetworkConstructionPacket(getAdMac(data), 2, proposal_ID,1, myid, "0", 0, "00"))
 		}
 }
@@ -270,25 +264,18 @@ var Type2Process = (data) => {
 		client_reply = true
 		/*bleno.stopAdvertising()*/
 		myid = getAdProposalDestinationId(data)
-		console.log("私のIDは・・・")
-		console.log(myid)
 		//データベースを初期化
 		id_ManagementDatabase = []
 
 		//提案IDの受諾メッセージ
-		console.log("提案に対する受諾" + makeNetworkConstructionPacket(myMAC, 3, getAdSenderID(data), 1, myid, "0", "0"))
 		AdvertisingData(makeNetworkConstructionPacket(myMAC, 3, getAdSenderID(data), 1, myid, "0", "0","00"))
 	}
 }
 
 var Type3Process = (data) => {
-	console.log("ケース３：提案に対する受諾メッセージ")
-	console.log("宛先は・・・")
-	console.log(getAdProposalDestinationId(data))
 
 	//自分に対するメッセージでなければ破棄	
 	if(getAdProposalDestinationId(data) == myid) {
-		console.log("ケース３：通過しました。続行します")
 		/*bleno.stopAdvertising()*/
 
 		// ID管理用DBにこの端末が登録されているか確認
@@ -301,20 +288,15 @@ var Type3Process = (data) => {
 		// ID管理用DBに登録されていないときは新規登録
 		if(found_flag == false) {
 			idPush(getAdMac(data),getAdSenderID(data))
-			console.log("DATA BASE UPDATED!!")
-			console.log(id_ManagementDatabase)
 		}							
 		/* 周囲に新規端末の通知 */
-		console.log("周囲に新規端末をお知らせします")
 		AdvertisingData(makeNetworkConstructionPacket(getAdMac(data),4,getAdSenderID(data),1,myid,"0",5,"00"))
 
 		//新規端末へID管理用データベースの送信
-		console.log("新規端末へIDDBを転送します")
 		setTimeout(() => { 
 			id_ManagementDatabase.forEach((a) => {
 				if(a.ID == 1) {
 					AdvertisingData(makeNetworkConstructionPacket(a.MAC,5,getAdSenderID(data),1,myid,id_ManagementDatabase.length,5,a.ID))
-					console.log(makeNetworkConstructionPacket(a.MAC,5,getAdSenderID(data),1,myid,id_ManagementDatabase.length,5,a.ID).toString())
 				}
 		 })},200)
 				
@@ -328,13 +310,10 @@ var Type3Process = (data) => {
 var Type4Process = (data) => {
 	// 新規端末はこの処理を行わない
 	if(getAdProposalDestinationId(data) == myid) return
-	console.log("新規端末ではない")
 	// 担当者はこの処理を行わない
 	if(getAdSenderID(data) == myid) return
-	console.log("担当者ではない")
 	// サーバー以外はこの処理を行わない
 	if(client_switch) return
-	console.log("全項目クリア。新規端末登録")
 
 
 	var hop_remain = getAdHopRemain(data)
@@ -347,8 +326,6 @@ var Type4Process = (data) => {
 	})
 	if(found_flag == false) {
 		idPush(getAdMac(data),getAdProposalDestinationId(data))
-		console.log("新規端末を登録しました")
-		console.log(id_ManagementDatabase)
 	}
 	/* 周囲に新規端末の通知 */
 	hop_remain --
@@ -369,8 +346,6 @@ var Type5Process = (data) => {
 		// ID管理用DBに登録されていないときは新規登録
 		if(found_flag == false) {
 			idPush(getAdMac(data),getAdSyncData(data))
-			console.log("DATA BASE UPDATED!!")
-			console.log(id_ManagementDatabase)
 		}
 		// サーバーに受信確認を送信
 		AdvertisingData(makeNetworkConstructionPacket(getAdMac(data),6,getAdSenderID(data),getAdPacketID(data),myid,"0",5,"00"))
@@ -417,7 +392,6 @@ var Type0Process = (data) => {
 	})
 	
 	if(flag) return
-	console.log("PINGマルチホップ")
 	AdvertisingData(data)
 }
 
@@ -442,7 +416,6 @@ var LinkRebuild = () => {
 	var linkBuildTimer = null
 
 	var makelink = function(){
-		console.log("リンクを構築します")
 		id_ManagementDatabase.forEach((a) => {
 			a.LINK = a.PING
 			a.PING = false
@@ -455,13 +428,33 @@ var LinkRebuild = () => {
 // メッセージを送信する関数
 ////	destination_id	宛先
 ////	message			送信するメッセージ
-var SendMessage = (destination_id=2 , message = "おはよう") => {
+var SendMessage = (destination_id=0 , message = "おはよう") => {
 	//ネットワーク内にいるか確認
 	if(myid == 1){
 	if(client_switch == false){
-		//宛先のリンク確認
-		/* 未実装 */
-
+		if(destination_id != 0){
+			var flag_found = false
+			var flag_link = false
+			//宛先のリンク確認
+			id_ManagementDatabase.forEach((a) => {
+				if(a.ID == destination_id){
+					if(a.LINK == true){
+						//リンクは有効である
+						flag_link = true
+					}
+					flag_found = true
+				}
+			})
+			
+			if(flag_found == false) {
+				console.log("宛先ID：", destination_id, "	未登録")
+				return
+			}
+			if(flag_link == false) {
+				console.log("宛先ID：", destination_id, "	リンク無効")
+				return
+			}
+		}
 
 		//使用可能なデータIDの問い合わせ
 		var available_data_id = 1
@@ -481,14 +474,12 @@ var SendMessage = (destination_id=2 , message = "おはよう") => {
 
 		//再送防止用DBに登録
 		resendPush(myid, available_data_id, 1)
-
-		console.log("再送防止用データベースの更新")
-		console.log(ResendPreventionDatabase)
 		
 		var buf = makeMessagePacket(destination_id, myid, available_data_id, 1, 1, 5, message)	
 		AdvertisingData(buf)
-		console.log("メッセージ送信")
 		console.log("「",getMeMassage(buf), "」")
+		
+
 		
 	}
 	}
@@ -511,7 +502,6 @@ var MassageReceiveProcess = (data) =>{
 			if(a.DataID == data_id)
 				if(a.SequenceNo == sequence_no){
 					//既に登録されているためフラグを立てる
-					console.log("既に再送防止DBに登録されています")
 					found_flag = true
 				}
 	})
@@ -520,12 +510,11 @@ var MassageReceiveProcess = (data) =>{
 	if(found_flag) return
 	
 	//再送防止用データベースに登録する
-	console.log("受信側：再送防止DBに登録します")
 	resendPush(sender_id, data_id, sequence_no)
 
 	//宛先を調べてそれぞれの処理を行う
 	if(destination_id == myid){
-		console.log("自分宛てのメッセージを受信「", message, "」")
+		console.log("自分宛て「", message, "」")
 	}else if(destination_id == 0){
 		//ブロードキャストの場合はパケットの中継も行う
 		console.log("ブロードキャスト「", message, "」")
@@ -604,7 +593,6 @@ var InitialProcess = () => {
 
 		}else if(data.toString('utf8', 0, 2)=='Me'){
 			//メッセージパケット受信時の処理
-			console.log("メッセージパケットを受信しました")
 			MassageReceiveProcess(data)
 		}
 	})
@@ -622,7 +610,9 @@ MainProcess()
 setTimeout(join, 1000)
 DoPing()
 LinkRebuild()
-//setIntervalの重複で動作が中断されている
-//sendMessageはなしで実装する必要あり
 var messageTestTimer = null
-messageTestTimer = setInterval(SendMessage, 12000)
+//setIntervalは関数実行中でも他のタイマーの呼び出しで中断される
+//複数使うときはタイミングをずらしてかぶらないようにする
+setTimeout(()=> {
+	messageTestTimer = setInterval(SendMessage, 10000)
+},2000)

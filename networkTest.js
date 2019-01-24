@@ -1,4 +1,4 @@
-//モジュールの読み:込み
+//モジュールの読み込み
 var noble = require('noble')
 var bleno = require('bleno')
 var fs = require('fs')
@@ -16,6 +16,10 @@ var client_reply = false	//新規参入者がサーバーに接続中かどう�
 var client_switch = true	//新規参入者かどうか
 var newer_handling = false	//参入者の募集をしているか、誰かの参入に対応中か
 
+/** 実験用 **/
+//実験用シーケンス番号
+var test_num = 1
+/************/
 
 //////////////////////関数定義///////////////////////
 
@@ -25,7 +29,7 @@ function AdvertisingData(buf){
 }
 
 //ファイル書き込み関数
-function TextOutput(path, buf){
+function FileOutput(path, buf){
 	fs.appendFileSync(path, buf,  (err) => {
 		console.log(err)
 	 })
@@ -33,7 +37,6 @@ function TextOutput(path, buf){
 
 //	ネットワーク構築パケットの構成
 /************************************************************************************************************************
-
 1~2			"ad"	ネットワーク構築用パケットを指す
 3~14		MACアドレス
 15			データの種類	(0:ハッシュID配布、1:NWリクエスト、2:NWリプライ、3:Message、4:ACK)
@@ -43,11 +46,8 @@ function TextOutput(path, buf){
 21			ID管理用データベースのサイズ
 22			TTL
 23~24		同期用ハッシュID
-
 25~31		フリースペース
-
 { [MACアドレス][データ種類][宛先／提案ハッシュID][パケットID][送信元ハッシュID][ID管理用データベースサイズ][TTL]0000000	}
-
 *************************************************************************************************************************/
 
 //ネットワーク構築用パケット作成関数
@@ -73,6 +73,7 @@ var makeMessagePacket = (destination_id, sender_id, data_id, sequence_no, divisi
 	var buf = new Buffer("Me" + shaped_destination_id + shaped_sender_id + shaped_data_id + shaped_sequence_no + shaped_division_number + hop_remain + message, 'utf8')
 	return buf
 }
+
 
 //ネットワーク構築パケットのゲッター関数
 //MACアドレス
@@ -183,9 +184,6 @@ var resendPush = (sender_id, data_id, sequence_no) => {
 var MainProcess = () =>{
 	
 idPush(myMAC,myid)
-//idPush("111111111111",3)
-//idPush("222222222222",2)
-
 
 }
 
@@ -218,9 +216,9 @@ var join = () => {
 
 var Type1Process = (data) => {
 	//参入者はこの処理に入らないようにする
-	if(client_switch) return
+	//if(client_switch) return
 					
-	/*bleno.stopAdvertising()*/
+
 	if(client_switch) return				//サーバーモードかどうか
 	else if(newer_handling) return			//参入者の対応中かどうか
 	else {
@@ -262,7 +260,7 @@ var Type2Process = (data) => {
 	// 自分宛ての提案かどうか
 	if(getAdMac(data) == myMAC){
 		client_reply = true
-		/*bleno.stopAdvertising()*/
+
 		myid = getAdProposalDestinationId(data)
 		//データベースを初期化
 		id_ManagementDatabase = []
@@ -274,9 +272,10 @@ var Type2Process = (data) => {
 
 var Type3Process = (data) => {
 
+	if(client_switch) return				//サーバーモードかどうか
 	//自分に対するメッセージでなければ破棄	
 	if(getAdProposalDestinationId(data) == myid) {
-		/*bleno.stopAdvertising()*/
+
 
 		// ID管理用DBにこの端末が登録されているか確認
 		var found_flag = false
@@ -308,7 +307,9 @@ var Type3Process = (data) => {
 } 
 
 var Type4Process = (data) => {
-	// 新規端末はこの処理を行わない
+
+	if(client_switch) return				//サーバーモードかどうか
+	// 参加者はこの処理を行わない
 	if(getAdProposalDestinationId(data) == myid) return
 	// 担当者はこの処理を行わない
 	if(getAdSenderID(data) == myid) return
@@ -334,6 +335,7 @@ var Type4Process = (data) => {
 }
 
 var Type5Process = (data) => {
+	if(client_switch) return				//サーバーモードかどうか
 	// ID管理用DBにこの端末が登録されているか確認
 	if(getAdProposalDestinationId(data) == myid) {
 		/*bleno.stopAdvertising()*/
@@ -355,14 +357,14 @@ var Type5Process = (data) => {
 			console.log("IDデータベースの取得完了")
 			console.log(id_ManagementDatabase)
 			client_switch = false
-			setTimeout(() => { /*bleno.stopAdvertising()*/ }, 500)
+			//setTimeout(() => { /*bleno.stopAdvertising()*/ }, 500)
 		}
 	}
 }
 
 var Type6Process = (data) => {
 	if(getAdProposalDestinationId(data) == myid) {
-		/*bleno.stopAdvertising()*/
+
 		var i = getAdPacketID(data)	//受信完了したID
 		i++							//次のIDを送信
 		 
@@ -428,7 +430,7 @@ var LinkRebuild = () => {
 // メッセージを送信する関数
 ////	destination_id	宛先
 ////	message			送信するメッセージ
-var SendMessage = (destination_id=0 , message = "おはよう") => {
+var SendMessage = (destination_id, message = String(test_num)) => {
 	//ネットワーク内にいるか確認
 	if(myid == 1){
 	if(client_switch == false){
@@ -460,8 +462,7 @@ var SendMessage = (destination_id=0 , message = "おはよう") => {
 		var available_data_id = 1
 		ResendPreventionDatabase.forEach((a) => {
 			if(a.SenderID == myid) {
-				//再送防止用DBに、自分が送ったパケットがあった場合
-				
+
 				//空いているデータIDを探索する
 				if(a.DataID == available_data_id) available_data_id++
 			
@@ -475,8 +476,13 @@ var SendMessage = (destination_id=0 , message = "おはよう") => {
 		//再送防止用DBに登録
 		resendPush(myid, available_data_id, 1)
 		
+		/** 実験用 **/
+		message = message + "|" + myid + "=>"
+		/************/
+
 		var buf = makeMessagePacket(destination_id, myid, available_data_id, 1, 1, 5, message)	
 		AdvertisingData(buf)
+		test_num++
 		console.log("「",getMeMassage(buf), "」")
 		
 
@@ -515,6 +521,12 @@ var MassageReceiveProcess = (data) =>{
 	//宛先を調べてそれぞれの処理を行う
 	if(destination_id == myid){
 		console.log("自分宛て「", message, "」")
+
+		/** 実験用 **/
+		message = message + "=>" + myid
+		/************/
+		FileOutput("Output.txt", message)
+
 	}else if(destination_id == 0){
 		//ブロードキャストの場合はパケットの中継も行う
 		console.log("ブロードキャスト「", message, "」")
@@ -522,6 +534,11 @@ var MassageReceiveProcess = (data) =>{
 	}else{
 		//他者へのメッセージは中継する
 		console.log("他者へのメッセージ")
+
+		/** 実験用 **/
+		message = message +  myid
+		/************/
+
 		AdvertisingData(data)
 	}
 }
@@ -614,5 +631,5 @@ var messageTestTimer = null
 //setIntervalは関数実行中でも他のタイマーの呼び出しで中断される
 //複数使うときはタイミングをずらしてかぶらないようにする
 setTimeout(()=> {
-	messageTestTimer = setInterval(SendMessage, 10000)
+	messageTestTimer = setInterval(SendMessage, 10000, 3)
 },2000)

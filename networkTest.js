@@ -5,7 +5,6 @@ var fs = require('fs')
 var macAddr = require('node-getmac')
 
 
-
 //自分のMACアドレスとID
 var myMAC = macAddr.replace(/:/g,'')
 var myid = 1
@@ -16,16 +15,25 @@ var client_reply = false	//新規参入者がサーバーに接続中かどう�
 var client_switch = true	//新規参入者かどうか
 var newer_handling = false	//参入者の募集をしているか、誰かの参入に対応中か
 
+
 /** 実験用 **/
 //実験用シーケンス番号
 var test_num = 1
 /************/
 
+
 //////////////////////関数定義///////////////////////
+var advertisementData = []
+
+
+function Advertising(){
+	bleno.startAdvertisingWithEIRData(advertisementData.shift(),  (err) => { })
+}
 
 //パケット送信関数
 function AdvertisingData(buf){
 	bleno.startAdvertisingWithEIRData(buf,  (err) => { })
+	//advertisementData.push(buf)
 }
 
 //ファイル書き込み関数
@@ -33,6 +41,134 @@ function FileOutput(path, buf){
 	fs.appendFileSync(path, buf,  (err) => {
 		console.log(err)
 	 })
+}
+
+/////////////////////クラス定義/////////////////////
+//あるノードの隣接ノード情報を記憶するクラス
+class neighborInfo{
+    constructor(id){
+	  //ノードのID
+	  this.id = id
+	  //隣接ノードのIDの配列
+      this.neighbor_nodes = []
+    }
+    push(value){
+		//push(ノードのID)で隣接ノードの入力
+        this.neighbor_nodes.push(value)
+    }
+
+  }
+
+//各ノードの隣接情報から経路表を作成する
+var MakeRoutingTable = (terminals, my_node)=>{
+
+    //自分の隣接ノード
+    var near_node = my_node.neighbor_nodes.slice()
+    //自分が知っているノード
+    var known_node = my_node.neighbor_nodes.slice()
+    known_node.push(my_node.id)
+    known_node.sort()
+
+    //経路表
+    var routing_table = []
+    var tablePush = (id, weight, to) => {
+        routing_table.push({ID:id, Weight:weight, To:to})
+    }
+    var tableEdit = (id, weight, to) => {
+        routing_table.forEach((each_node)=>{
+            if(each_node.ID == id){
+                each_node.Weight = weight
+                each_node.To = to
+            }
+        })
+    }
+	var flag_return
+    //全ノードの登録cs
+    terminals.forEach((node) => {
+		tablePush(node.id, 9999, null)
+		if(node.neighbor_nodes.length == 0) flag_return = true
+    })
+	if(flag_return)return
+    //自ノードの登録
+    tableEdit(my_node.id, 0, null)
+
+    //隣接ノードの登録
+    near_node.forEach((node_id) => {
+    tableEdit(node_id, 1, node_id)
+    })
+
+
+	
+    //経路表のToがすべて隣接ノードになるまでループ
+    var flag_all_near_to = true
+    while(flag_all_near_to){
+        
+        routing_table.forEach((table_each_node)=>{
+            //ここで経路表の１行目に入る
+            //自ノードの場合は飛ばす
+            if(table_each_node.ID == my_node.id) return
+            
+            //そのノードのToが隣接ノードの場合、その行は終了する
+            var flag_end_this_line = false
+            near_node.forEach((near_any_node) => {
+            if(table_each_node.To == near_any_node) flag_end_this_line = true
+            })
+            if(flag_end_this_line) return
+            
+
+            //Toが未登録の場合は、そのIDの隣接ノードでループをかける
+            if(table_each_node.To == null){
+                //ノード表から検索
+                terminals.forEach((each) => {
+                    if(each.id == table_each_node.ID){
+                        //ノードの隣接ノードを引っ張ってくる
+                        each.neighbor_nodes.forEach((table_each_node_near_id) => {
+                            known_node.forEach((known_each_node_id) => {
+                                //その行の隣接ノード＝知っているノードであればそれをToに設定
+                                if(table_each_node_near_id == known_each_node_id){
+
+                                    //その行の重さが更新されるか判断
+                                    routing_table.forEach((a)=>{
+                                        if(a.ID == known_each_node_id){
+                                            if(table_each_node.Weight > a.Weight+1) {
+                                                table_each_node.To = known_each_node_id
+                                                
+                                                //そのノードの重さを更新
+                                                table_each_node.Weight = a.Weight+1
+                                                known_node.push(table_each_node.ID)
+                                                known_node.sort()
+
+                                            }
+                                        }
+                                    })
+                                    
+                                                                    
+                                }
+
+                            })
+                        })
+                    }
+                })
+            }else{
+                routing_table.forEach((each) => {
+                    if(each.ID == table_each_node.To) table_each_node.To = each.To
+                })
+            }
+        })
+        //終了判定
+        flag_all_near_to = false
+        routing_table.forEach((each_node)=>{
+            if(each_node.ID == my_node.id) return
+            var count=0
+            near_node.forEach((a)=>{
+                if(each_node.To != a) count++
+            })
+            //そうでない場合はwhile文を抜けられない
+            if(count == near_node.length) flag_all_near_to = true
+            })
+    }
+
+    console.log(routing_table)
 }
 
 //	ネットワーク構築パケットの構成
@@ -59,6 +195,12 @@ var makeNetworkConstructionPacket = (mac, packet_type, proposal_destination_id ,
 	var shaped_sync_data = ( '00' +  Number(sync_data)).slice( -2 )
 	//文字列→Buffer
 	var buf = Buffer("Ad"+ mac + packet_type + shaped_proposal_destination_id + paket_id + shaped_sender_id + management_db_size + hop_remain + shaped_sync_data + "0000000")
+	return buf
+}
+var makeRoutingPacket = (hop_remain, near_node_num, near_node_buf="") => {
+	var shaped_myid = ( '00' +  Number(myid)).slice( -2 )
+	var shaped_near_node_num = ( '00' +  Number(near_node_num)).slice( -2 )
+	var buf = Buffer("Ro" + shaped_myid + hop_remain + shaped_near_node_num + near_node_buf)
 	return buf
 }
 var makeMessagePacket = (destination_id, sender_id, data_id, sequence_no, division_number, hop_remain, message) => {
@@ -111,6 +253,24 @@ function getAdSyncData(data){
 	return Number(data.toString('ascii', 22, 24))
 }
 
+//隣接ノード情報パケットのゲッター関数
+//送信者ID（誰の隣接ノード情報か）
+function getRoSenderId(data){
+	return Number(data.toString('ascii', 2, 4))
+}
+//TTL
+function getRoHopRemain(data){
+	return Number(data.toString('ascii'), 4, 5)
+}
+//隣接ノードの数
+function getRoNeighborNum(data){
+	return Number(data.toString('ascii', 5, 7))
+}
+//隣接ノードID
+function getRoNeighborID(data, start){
+	return Number(data.toString('ascii', 7+start*2, 9+start*2))
+}
+
 //メッセージパケットのゲッター関数
 //宛先ハッシュID
 function getMeDestinationID(data){
@@ -152,22 +312,38 @@ var id_ManagementDatabase = []
 //再送防止用データベース
 var ResendPreventionDatabase = []
 
+
 //ID管理用データベースへの挿入＋ソート
 var idPush = (macAdress, ID) => {
 	//挿入
-	id_ManagementDatabase.push({MAC:macAdress, ID:ID, LINK:false, PING:false})
+	id_ManagementDatabase.push({MAC:macAdress, ID:ID, PING:false, PING_Update:false, NeighborInfo:null, NeighborInfo_Update:false})
 	//ソート
 	id_ManagementDatabase.sort((a,b) => {
 		if(a.ID<b.ID) return -1
 		if(a.ID>b.ID) return 1
 		return 0
 	})
+	console.log(id_ManagementDatabase)
 }
 
+var resendDelete = (sender_id, data_id, sequence_no) => {
+	var index
+	ResendPreventionDatabase.forEach((a, i) => {
+		if(a.SenderID == sender_id)
+			if(a.DataID == data_id)
+				if(a.SequenceNo == sequence_no){
+					ResendPreventionDatabase.splice(i, 1)
+					return true
+				}
+	})
+	console.log("Deleted","  ",sender_id, data_id, sequence_no)
+	console.log(ResendPreventionDatabase)
+}
 //再送防止用データベースへの挿入＋ソート
 var resendPush = (sender_id, data_id, sequence_no) => {
 	//挿入
 	ResendPreventionDatabase.push({SenderID:sender_id, DataID:data_id, SequenceNo:sequence_no})
+	setTimeout(resendDelete, 15000, sender_id, data_id, sequence_no)
 	//送信元IDでソート
 	ResendPreventionDatabase.sort((a,b) => {
 		if(a.SenderID<b.SenderID) return -1
@@ -179,6 +355,7 @@ var resendPush = (sender_id, data_id, sequence_no) => {
 		return 0
 	})
 }
+
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~メイン処理の定義~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
 var MainProcess = () =>{
@@ -382,49 +559,130 @@ var Type6Process = (data) => {
 
 // =========================リンク維持========================== //
 
-// １０秒間に受信したPINGを記憶しておく
+// １０秒間に受信したPING_Updateを記憶しておく
 var Type0Process = (data) => {
-	var flag = false
 	//受信したパケットからリンク保証を記録
 	id_ManagementDatabase.forEach((a) => {
 		if(a.MAC == getAdMac(data)){
-			if(a.PING == true) 	flag = true//すでに受信済みパケットなら破棄
-			a.PING = true
+			a.PING_Update = true
 		}
 	})
-	
-	if(flag) return
-	AdvertisingData(data)
 }
 
-// PINGを５秒ごとに送信する
+// PING_Updateを５秒ごとに送信する
 var DoPing = () => {
 	var pingTimer = null
 
 	var ping = function(){
 		if(client_switch == false){
 			AdvertisingData(makeNetworkConstructionPacket(myMAC, 0, myid, 1,"00", "0",5,"00"))
-			//setTimeout(() => { /*bleno.stopAdvertising()*/ }, 200)
-			console.log("PINGを出しています")
+			console.log("PING_Updateを出しています")
 		}
 	}
 
 	pingTimer = setInterval(ping, 5000)
-	//５秒ごとにPINGを出します
+	//５秒ごとにPING_Updateを出します
 }
 
-// １０秒毎にリンクを再構築する
+// １０秒毎に隣接ノード情報を更新し、それをブロードキャストする
 var LinkRebuild = () => {
 	var linkBuildTimer = null
 
 	var makelink = function(){
-		id_ManagementDatabase.forEach((a) => {
-			a.LINK = a.PING
-			a.PING = false
-		})
-		console.log(id_ManagementDatabase)
+		if(client_switch == false){
+			//リンクの再構築
+			id_ManagementDatabase.forEach((a) => {
+				a.PING = a.PING_Update
+				a.PING_Update = false
+			})
+			console.log(id_ManagementDatabase)
+
+			//自身の隣接ノード情報をブロードキャスト
+			var buf = ""								//パケット作成用の文字列
+			var count = 0								//隣接ノードのカウント変数
+			var my_neighbor = new neighborInfo(myid)	//自分の隣接ノード情報の入れ物
+		
+			id_ManagementDatabase.forEach((a)=> {
+				if(a.PING) {
+					//PINGの発信元をbuf（Advertise用）に登録する
+					buf += ( '00' +  Number(a.ID)).slice( -2 )
+					count++
+					//同時に、自分の隣接ノード情報として登録しておく
+					my_neighbor.push(a.ID)
+				}
+			})
+
+			//buf==null は周囲にPING発信がないことをを示す
+			if(buf == null) return
+			AdvertisingData(makeRoutingPacket(5, count, buf))
+			console.log(makeRoutingPacket(5, count, buf).toString())
+			//自分の隣接ノード情報をid_ManagementDatabaseに登録する
+			id_ManagementDatabase.forEach((a)=>{
+				if(a.ID == myid) {
+					a.NeighborInfo = my_neighbor
+					a.NeighborInfo_Update = true
+				}
+			})
+		}
 	}
-	linkBuildTimer = setInterval(makelink, 10000)
+	linkBuildTimer = setInterval(makelink, 5000)
+}
+
+var NeighborInfoReceiveProcess = (data) => {
+	var i					//ループカウンタ
+	//ノードのID
+	var sender_id = getRoSenderId(data)
+	//残ホップ数
+	var hop_remain = getRoHopRemain(data)
+	//隣接ノード数
+	var neighbor_node_num = getRoNeighborNum(data)
+	
+	//送信元ノードの隣接情報をまとめる
+	var node = new neighborInfo(sender_id)
+	for(i=0; i<neighbor_node_num; i++){
+		node.push(getRoNeighborID(data, i))
+	}
+	id_ManagementDatabase.forEach((a)=>{
+		if(a.ID == sender_id) {
+			a.NeighborInfo = node
+			a.NeighborInfo_Update = true
+		}
+	})
+}
+
+var UpdateRoutingTable = ()=>{
+	var RoutingTimer = null
+
+	var Routing = function(){
+		if(client_switch == false){
+			//ルーティングに含めるノードを入れる配列
+			var terminals = []
+			var my_node
+
+			//ルーティングに含めるノードを配列に入れる
+			//a.neighborInfoには、ノードaのIDとその隣接情報が入っている
+			id_ManagementDatabase.forEach((a)=>{
+				if(a.NeighborInfo_Update) {
+					terminals.push(a.NeighborInfo)
+					a.NeighborInfo_Update = false
+				}
+				if(a.ID == myid) my_node = a.NeighborInfo
+			})
+			if(terminals.length == 0){
+				console.log("Nobody is here")
+				return
+			}
+			if(my_node == null) {
+				console.log("setting my_node error")
+				return
+			}
+			if(terminals[1] == null) return
+			
+			MakeRoutingTable(terminals, my_node)
+		}
+	}
+
+	RoutingTimer = setInterval(Routing, 10000)
 }
 
 // メッセージを送信する関数
@@ -440,7 +698,7 @@ var SendMessage = (destination_id, message = String(test_num)) => {
 			//宛先のリンク確認
 			id_ManagementDatabase.forEach((a) => {
 				if(a.ID == destination_id){
-					if(a.LINK == true){
+					if(a.PING == true){
 						//リンクは有効である
 						flag_link = true
 					}
@@ -489,6 +747,7 @@ var SendMessage = (destination_id, message = String(test_num)) => {
 		
 	}
 	}
+	console.log(ResendPreventionDatabase)
 }
 
 
@@ -608,9 +867,16 @@ var InitialProcess = () => {
 				break
 			}
 
-		}else if(data.toString('utf8', 0, 2)=='Me'){
+		}else if(data.toString('ascii', 0, 2) == 'Me'){
 			//メッセージパケット受信時の処理
+			if(client_switch) return
+			if(newer_handling) return
 			MassageReceiveProcess(data)
+		}else if(data.toString('ascii', 0, 2) == 'Ro'){
+			if(client_switch) return
+			if(newer_handling) return
+			//あるノードの隣接情報を受信したとき
+			NeighborInfoReceiveProcess(data)
 		}
 	})
 	
@@ -625,11 +891,13 @@ var InitialProcess = () => {
 InitialProcess()
 MainProcess()
 setTimeout(join, 1000)
-DoPing()
+setTimeout(DoPing, 1000)
 LinkRebuild()
+setTimeout(UpdateRoutingTable, 5000)
+
 var messageTestTimer = null
 //setIntervalは関数実行中でも他のタイマーの呼び出しで中断される
 //複数使うときはタイミングをずらしてかぶらないようにする
 setTimeout(()=> {
-	messageTestTimer = setInterval(SendMessage, 10000, 3)
+	messageTestTimer = setInterval(SendMessage, 10000, 0)
 },2000)

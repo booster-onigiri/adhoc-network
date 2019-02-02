@@ -113,10 +113,13 @@ var MakeRoutingTable = (terminals, my_node) => {
 				return true
 			}
 		})
-	}
+    }
+
+    //隣接情報の数の和
+
 	var count = 0
 	var flag_return
-	//全ノードの登録cs
+	//全ノードの登録
 	terminals.forEach((node) => {
 		if (node == null) {
 			flag_return = true
@@ -125,10 +128,14 @@ var MakeRoutingTable = (terminals, my_node) => {
 			count += node.neighbor_nodes.length
 			if (node.neighbor_nodes.length == 0) flag_return = true
 		}
-	})
+    })
+    
+    //隣接情報の数の和
 	if ((count % 2) != 0) return
 	if (flag_return) return
-	//自ノードの登録
+    
+    
+    //自ノードの登録
 	tableEdit(my_node.id, 0, null)
 
 	//隣接ノードの登録
@@ -719,7 +726,7 @@ var NeighborInfoReceiveProcess = (data) => {
 					}
 		})
 		//if (found_flag) return
-		console.log(sender_id, "の隣接情報を受信！")
+		//console.log(sender_id, "の隣接情報を受信！")
 		//送信元ノードの隣接情報をまとめる
 		var node = new neighborInfo(sender_id)
 		for (i = 0; i < neighbor_node_num; i++) {
@@ -741,7 +748,7 @@ var NeighborInfoReceiveProcess = (data) => {
 
 		//マルチホップ
 		AdvertisingData(data)
-		console.log(sender_id,"を再送")
+		//console.log(sender_id,"を再送")
 
 	}
 }
@@ -750,7 +757,7 @@ var UpdateRoutingTable = () => {
 	var RoutingTimer = null
 
 	var Routing = function () {
-		//RoutingTimer = setTimeout(Routing, 20000)
+		RoutingTimer = setTimeout(Routing, 20000)
 
 		if (client_switch == false) {
 			//ルーティングに含めるノードを入れる配列
@@ -758,13 +765,15 @@ var UpdateRoutingTable = () => {
 			var my_node
 
 			//ルーティングに含めるノードを配列に入れる
-			//a.neighborInfoには、ノードaのIDとその隣接情報が入っている
+            //a.neighborInfoには、ノードaのIDとその隣接情報が入っている
+            //ただし隣接情報が空の場合は除外する
 			id_ManagementDatabase.forEach((a) => {
-				if (a == null) return true
-				terminals.push(a.NeighborInfo)
+				if(a.NeighborInfo == null) return
+				if(a.NeighborInfo.neighbor_nodes.length != 0)terminals.push(a.NeighborInfo)
 				a.NeighborInfo_Update = false
 				if (a.ID == myid) my_node = a.NeighborInfo
-			})
+            })
+            
 			if (terminals.length == 0) {
 				console.log("Nobody is here")
 				return
@@ -772,15 +781,36 @@ var UpdateRoutingTable = () => {
 			if (my_node == null) {
 				console.log("setting my_node error")
 				return
-			}
-			if (terminals[1] == null) return
+            }
 
-			//MakeRoutingTable(terminals, my_node)
+            //隣接情報を集めたterminalsに矛盾がないか調べる
+            //例）それぞれの隣接情報を、ID{隣接ID,隣接ID}とする
+            //01{02,03},02{03},03{01,02}
+            //
+            var flag_contradiction = false
+
+            terminals.forEach((a)=>{
+                a.neighbor_nodes.forEach((neighbor_of_a)=>{
+                    var found_flag = false
+                    terminals.forEach((b)=>{
+                        if(neighbor_of_a == b.id) {
+                            var result = b.neighbor_nodes.indexOf(a.id)
+                            if(result == -1) flag_contradiction = true
+                            found_flag = true
+                        }
+                    })
+                    if(!found_flag) flag_contradiction = true
+                })
+            })
+            if(flag_contradiction) {
+                console.log("隣接ノードが不適切です")
+                return
+            }
+			MakeRoutingTable(terminals, my_node)
 		}
 
 	}
-
-	RoutingTimer = setInterval(Routing, 20000)
+	RoutingTimer = setTimeout(Routing, 20000)
 }
 
 // メッセージを送信する関数

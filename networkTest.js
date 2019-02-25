@@ -53,9 +53,9 @@ var test_num = 1
 var advertisementData = []
 
 
-function Advertising() {
-	bleno.startAdvertisingWithEIRData(advertisementData.shift(), (err) => {})
-}
+// function Advertising() {
+// 	bleno.startAdvertisingWithEIRData(advertisementData.shift(), (err) => {})
+// }
 
 //パケット送信関数
 function AdvertisingData(buf) {
@@ -223,6 +223,7 @@ var MakeRoutingTable = (terminals, my_node) => {
 
 	RoutingTable = routing_table
 	console.log(RoutingTable)
+	FileOutput("RoutingTable.txt", RoutingTable)
 }
 
 //	ネットワーク構築パケットの構成
@@ -817,9 +818,9 @@ var UpdateRoutingTable = () => {
 ////	destination_id	宛先
 ////	message			送信するメッセージ
 var SendMessage = (destination_id, message = String(test_num)) => {
-	messageTestTimer = setTimeout(SendMessage, 10000, 5)
+	messageTestTimer = setTimeout(SendMessage, 10000, 3)
 	//実験用　開始制御
-	if (!flag_start_message) return
+	if (flag_start_message) return
 
 	//実験では送信者を1とする
 	if (myid != 1) return
@@ -868,7 +869,7 @@ var SendMessage = (destination_id, message = String(test_num)) => {
 		/** 実験用 **/
 		message = message + "|" + myid + "=>"
 		/************/
-
+		console.log(message + "|" + myid + "=>")
 		var buf = makeMessagePacket(destination_id, myid, next_hop_id, available_data_id, 1, 1, 5, message)
 		AdvertisingData(buf)
 		test_num++
@@ -908,7 +909,6 @@ var MassageReceiveProcess = (data) => {
 
 	//再送防止用データベースに登録する
 	resendPush(sender_id, data_id, sequence_no)
-
 	//宛先を調べてそれぞれの処理を行う
 	if (destination_id == myid) {
 		//console.log("自分宛て「", message, "」")
@@ -916,12 +916,14 @@ var MassageReceiveProcess = (data) => {
 		/** 実験用 **/
 		message = message + myid
 		/************/
-		FileOutput("Output.txt", "自分宛て" + message)
+		FileOutput("Output.txt", "自分宛て" + message + "\n")
+		console.log("自分宛て" + message)
+		
 
 	} else if (destination_id == 0) {
 		//ブロードキャストの場合はパケットの中継も行う
-		//console.log("ブロードキャスト「", message, "」")
-		FileOutput("Output.txt", "ブロードキャスト" + message)
+		FileOutput("Output.txt", "ブロードキャスト" + message + "\n")
+		console.log("ブロードキャスト" + message)
 		AdvertisingData(data)
 	} else {
 		//他者へのメッセージは中継する
@@ -930,7 +932,8 @@ var MassageReceiveProcess = (data) => {
 		/** 実験用 **/
 		message = message + myid + "=>"
 		/************/
-
+		FileOutput("Output.txt", "中継" + message + "\n")
+		console.log("中継" + message)
 		AdvertisingData(makeMessagePacket(destination_id, sender_id, next_hop_id, data_id, sequence_no, division_number, hop_remain, message))
 	}
 
@@ -1046,5 +1049,5 @@ setTimeout(UpdateRoutingTable, 5000)
 var messageTestTimer = null
 //複数使うときはタイミングをずらしてかぶらないようにする
 setTimeout(() => {
-	messageTestTimer = setTimeout(SendMessage, 10000, 5)
+	messageTestTimer = setTimeout(SendMessage, 10000, 3)
 }, 2000)

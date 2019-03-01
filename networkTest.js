@@ -4,6 +4,10 @@ var bleno = require('bleno')
 var fs = require('fs')
 var macAddr = require('node-getmac')
 
+//String型文字列のバイト数を返す関数
+String.prototype.bytes = function () {
+    return(encodeURIComponent(this).replace(/%../g,"x").length);
+}
 
 //自分のMACアドレスとID
 var myMAC = macAddr.replace(/:/g, '')
@@ -25,6 +29,81 @@ var ResendPreventionDatabase = []
 
 //ルーティングテーブル
 var RoutingTable
+
+//メッセージボックス
+var MessageBox = []
+
+//メッセージボックスの内容を1つ削除する関数
+var messageDelete = (sender_id, data_id) => {
+	MessageBox.forEach((a, i) => {
+		if (a.SenderID == sender_id)
+			if (a.DataID == data_id)
+                MessageBox.splice(i, 1)
+                return true
+    })
+}
+//メッセージボックスに受信メッセージを登録する関数
+var messagePush = function(sender_id, data_id, packet_num){
+    MessageBox.push({
+        SenderID:sender_id,
+        DataID: data_id,
+        PacketNum: packet_num,
+        Message: Array(packet_num)
+    })
+    //データIDは一定時間で開放される(再送防止用DBを参照)ため,メッセージBOXも同様にする
+    setTimeout(messageDelete, 15000, sender_id, data_id)
+    //登録後は送信元IDとデータIDでソートを行う
+    MessageBox.sort((a, b) => {
+        if (a.SenderID < b.SenderID) return -1
+        if (a.SenderID > b.SenderID) return 1
+        if (a.DataID < b.DataID) return -1
+        if (a.DataID > b.DataID) return 1
+        return 0
+    })
+}
+
+var DividedMassageProcess = function(sender_id, data_id, sequence_no, packet_num, message){
+	var isFound = false		//ループ脱出用フラグ
+
+    while(true){
+        MessageBox.forEach((a)=>{
+            //メッセージボックスが空であればスキップする
+            if(a == 'undefined') return
+
+            //メッセージボックスから既存メッセージが存在するか調べる
+            if(a.SenderID == sender_id){
+                if(a.DataID == data_id) {
+                    //メッセージボックスにデータIDの登録があるため,そこに分割メッセージを保存
+                    a.Message[sequence_no] = message
+                    isFound = true
+    
+                    /* 分割メッセージが全て届いたか確認 */
+                    //現在の受信済みパケット数を調べる　→now_packet_num
+                    var now_packet_num = 0
+                    for (var key in a.Message) now_packet_num++
+                    console.log(now_packet_num,":",message.bytes(),"バイト:",message)
+                    //現在の受信済みパケット数が分割総数に等しければ文字列を復元　→restore_string
+                    if(now_packet_num == a.PacketNum){
+                        var restore_string = ""
+                        a.Message.forEach((a)=>{
+                            if(a == 'undefined') return
+                            restore_string += a
+                        })
+                        //console.log("送信元ID：", sender_id, "データID：", data_id, "　文字列：", restore_string)
+						FileOutput("DividedMassage.txt",restore_string + "\n")
+						console.log(restore_string)
+					}
+                }
+            }
+        })
+
+        //メッセージボックスへの保存が終わると,ここでループ処理を抜ける
+        if(isFound) break;
+
+        //データIDにデータIDの登録がなければ,新たに登録する。
+        messagePush(sender_id, data_id, packet_num)
+    }
+}
 
 //実験用制御フラグ
 var flag_start_message = false
@@ -817,10 +896,10 @@ var UpdateRoutingTable = () => {
 // メッセージを送信する関数
 ////	destination_id	宛先
 ////	message			送信するメッセージ
-var SendMessage = (destination_id, message = String(test_num)) => {
-	messageTestTimer = setTimeout(SendMessage, 10000, 3)
+var SendMessage = (destination_id, message = "1985年11月に Interface Manager というコードネームで登場した[7]。初期のバージョンは独立したOSではなく、MS-DOS上で稼動するGUIを実現するアプリケーションでしかなかった[8]。のちに、GUI環境で先行していた1984年登場のMac OSを追い越して世界のパーソナルコンピュータ市場でトップシェアとなり、2009年10月にはインターネット上で使用されているクライアントの市場シェアの約90%を得た[9][10][11]。") => {
+	messageTestTimer = setTimeout(SendMessage, 10000, 0)
 	//実験用　開始制御
-	if (flag_start_message) return
+	//if (flag_start_message) return
 
 	//実験では送信者を1とする
 	if (myid != 1) return
@@ -863,18 +942,49 @@ var SendMessage = (destination_id, message = String(test_num)) => {
 			}
 		})
 
-		//再送防止用DBに登録
-		resendPush(myid, available_data_id, 1)
-
-		/** 実験用 **/
-		message = message + "|" + myid + "=>"
-		/************/
-		console.log(message + "|" + myid + "=>")
-		var buf = makeMessagePacket(destination_id, myid, next_hop_id, available_data_id, 1, 1, 5, message)
-		AdvertisingData(buf)
-		test_num++
-		//console.log("「",getMeMassage(buf), "」")
-
+		//メッセージのバイト数を調べる
+		var message_bytes = message.bytes()
+		console.log("メッセージ", "は",message_bytes, "バイトです")
+		var position = 0                //現在地
+		var advertisingDataBox = []     //分割したメッセージをこの配列に入れる
+		var divide_num          
+		for(devide_num=0; message.substr(position) != ""; devide_num++){
+			//ここでメッセージの分割作業を行う
+			j=17
+			if(message.substr(position).bytes()>16){
+				for(j=0; message.substr(position,j).bytes()<=16;) j++
+			}
+			advertisingDataBox.push(message.substr(position, j-1))
+			position += j-1
+		}
+		console.log(devide_num, "分割します")
+		sequence_no = 1
+		var devidedMessageSend = function(destination_id,next_hop_id,available_data_id,sequence_no,devide_num,advertisingDataBox){
+			if(sequence_no > devide_num) return
+			var message = advertisingDataBox.shift()
+			resendPush(myid, available_data_id, sequence_no)
+			console.log("送信：", sequence_no,"：", message)
+			var buf = makeMessagePacket(destination_id, myid, next_hop_id, available_data_id, sequence_no, devide_num, 5, message)
+			var min = 40 ;
+			var max = 50 ;
+			var a = Math.floor( Math.random() * (max + 1 - min) ) + min ;
+			AdvertisingData(buf)
+			sequence_no++
+			setTimeout(devidedMessageSend, a, destination_id,next_hop_id,available_data_id,sequence_no,devide_num,advertisingDataBox)
+		}
+		setTimeout(devidedMessageSend,100,destination_id,next_hop_id,available_data_id,sequence_no,devide_num,advertisingDataBox)
+		// advertisingDataBox.forEach((devided_message,sequence_no)=>{
+		// 	//ここで分割メッセージの送信を行う
+		// 	//再送防止用DBに登録
+		// 	resendPush(myid, available_data_id, sequence_no+1)
+		// 	console.log("送信：", sequence_no+1,"：",devided_message)
+		// 	var buf = makeMessagePacket(destination_id, myid, next_hop_id, available_data_id, sequence_no+1, devide_num, 5, devided_message)
+		// 	var min = 0 ;
+		// 	var max = 100 ;
+		// 	var a = Math.floor( Math.random() * (max + 1 - min) ) + min ;
+		// 	setTimeout(AdvertisingData,100+a,buf)
+		// 	setTimeout(AdvertisingData,200+a,buf)
+		// });
 	}
 }
 
@@ -889,7 +999,6 @@ var MassageReceiveProcess = (data) => {
 	var division_number = getMeDivisionNumber(data)
 	var hop_remain = getMeHopRemain(data)
 	var message = getMeMassage(data)
-
 	//再送防止用DBに登録されているか調べる
 	var found_flag = false
 	ResendPreventionDatabase.forEach((a) => {
@@ -903,27 +1012,38 @@ var MassageReceiveProcess = (data) => {
 
 	//登録済みならこのパケットを破棄
 	if (found_flag) return
-
+	//console.log(message,sequence_no)
 	//次ホップ先が自ノードでなければこのパケットを破棄
-	if (next_hop_id != myid) return
+	if (next_hop_id != myid && destination_id !=0) return
 
 	//再送防止用データベースに登録する
 	resendPush(sender_id, data_id, sequence_no)
 	//宛先を調べてそれぞれの処理を行う
 	if (destination_id == myid) {
-		//console.log("自分宛て「", message, "」")
-
-		/** 実験用 **/
-		message = message + myid
-		/************/
-		FileOutput("Output.txt", "自分宛て" + message + "\n")
-		console.log("自分宛て" + message)
+		if(division_number == 0){
+			console.log("error:invaild packet_num")
+		}else if(division_number == 1){
+			FileOutput("SingleMassage.txt",message + "\n")
+		}
+		else{
+			DividedMassageProcess(sender_id, data_id, sequence_no, division_number, message)
+		}
 		
 
 	} else if (destination_id == 0) {
-		//ブロードキャストの場合はパケットの中継も行う
-		FileOutput("Output.txt", "ブロードキャスト" + message + "\n")
-		console.log("ブロードキャスト" + message)
+		//destination_id == 0 はブロードキャスト
+		//console.log("ブロードキャスト" + message)
+
+		if(division_number == 0){
+			console.log("error:invaild packet_num")
+		}else if(division_number == 1){
+			FileOutput("SingleMassage.txt",message + "\n")
+			console.log(message)
+		}
+		else{
+			DividedMassageProcess(sender_id, data_id, sequence_no, division_number, message)
+		}
+
 		AdvertisingData(data)
 	} else {
 		//他者へのメッセージは中継する
@@ -1049,5 +1169,5 @@ setTimeout(UpdateRoutingTable, 5000)
 var messageTestTimer = null
 //複数使うときはタイミングをずらしてかぶらないようにする
 setTimeout(() => {
-	messageTestTimer = setTimeout(SendMessage, 10000, 3)
+	messageTestTimer = setTimeout(SendMessage, 10000, 2)
 }, 2000)
